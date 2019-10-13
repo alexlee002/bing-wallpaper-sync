@@ -54,8 +54,9 @@ fi
 mkdir -p "$DEST_DIR"
 DEST_DIR=$(cd $DEST_DIR; pwd)
 
-EXE_FILE="$DEST_DIR/bing-wallpaper.sh"
+EXE_FILE="$DEST_DIR/bin/bing-wallpaper.sh"
 AUTO_RUN_PLIST="$HOME/Library/LaunchAgents/bing-wallpaper-auto-update.plist"
+mkdir -p "$DEST_DIR/bin"
 
 ##################
 
@@ -70,13 +71,6 @@ echo "AUTO_RUN_PLIST: $AUTO_RUN_PLIST"
 cat <<EOF > "$EXE_FILE"
 #!/usr/bin/env bash
 
-WALLPAPER_DIR="$DEST_DIR"
-BING_URL="$URL"
-TARGET_RESOLUTION="$RESOLUTION" #target resolution is 1920x1080
-
-UA="User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/52.0.2743.116 Safari/537.36"
-
-mkdir -p "\$WALLPAPER_DIR"
 
 download_image() {
 	url=\$1
@@ -86,48 +80,30 @@ download_image() {
 
 	if [ ! -f "\$out_file" ]; then
         echo "Downloading: \$out_file ..."
-        curl -Lo "\$out_file" "\$url" -H "\$UA" -H "Referer: \$BING_URL"
+        curl -Lo "\$out_file" "\$url"
         [ -s  "\$out_file" ] || rm -f "\$out_file"
+
+        is_img_file=\$(file "\$out_file" | grep -e " image data" | wc -l)
+        [ \$is_img_file -gt 0 ] || rm -f "\$out_file"
     fi
 }
 
-urls=( \$(curl -sL "\$BING_URL" | \\
-    grep -Eo "url:\s*['\"].*?['\"]"| \\
-    sed -e "s/url: *//"|\\
-    sed -e "s/['\"]//g") )
+WALLPAPER_SERVER="https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1"
+WALLPAPER_DIR="\$HOME/Pictures/bing-wallpapers"
 
+data=\$(curl -sL "\$WALLPAPER_SERVER")
+pic_url=\$(echo "\$data" | grep -Eo "\"url\":\s*['\"].*?['\"]" | sed -e "s/\"url\"[\: ]\+//"| sed -e "s/['\"]//g")
+pic_url=\$(echo "\$pic_url" | sed -e "s/url:\(.*\)/\1/")
+pic_url="https://www.bing.com\$pic_url"
 
-for p in \${urls[@]}; do
+url_base=\$(echo "\$data" | grep -Eo "\"urlbase\":\s*['\"].*?['\"]" | sed -e "s/\"urlbase\"[\: ]\+//"| sed -e "s/['\"]//g")
+url_base=\$(echo "\$url_base" | sed -e "s/urlbase:\(.*\)/\1/")
+pic_name=\$(echo "\$url_base" | sed -e "s/.*id=\(.*\)/\1/")
+out_file="\$WALLPAPER_DIR"/"\$pic_name"
 
-	([[ \$p = http://* ]] || [[ \$p = https://* ]])  || p="\$BING_URL/\$p"
-	
-    filename=\$(echo \$p|sed -e "s/.*\/\(.*\)/\1/")
-    if [ "\$filename" != "" ]; then
-
-    	if [ ! -z "\$TARGET_RESOLUTION" ]; then
-    		target_name=\$(echo \$filename|sed -e "s/_[0-9]\{1,\}x[0-9]\{1,\}./_\$TARGET_RESOLUTION./")
-    		url=\$(echo \$p|sed -e "s/\$filename/\$target_name/")
-
-    		out_file=\$WALLPAPER_DIR/\$target_name
-    		download_image \$url "\$out_file"
-    	fi
-
-    	if [ ! -f "\$out_file" ]; then
-    		out_file=\$WALLPAPER_DIR/\$filename
-    		download_image \$p "\$out_file"
-    	fi
-
-    	if [ -f "\$out_file" -a -z "\$set_today" ]; then
-    		today=\$WALLPAPER_DIR/"today.jpg"
-    		rm -f \$today
-    		ln -s "\$out_file" \$today
-
-    		[ -f \$today ] && set_today=1
-    	fi
-    fi
-done
-
-echo "Done!"   
+if [[ ! -f "\$out_file" ]]; then
+	download_image "\$pic_url" "\$out_file"
+fi  
 EOF
 
 [ -f $EXE_FILE ] || exit "\033[31m;Can not create executable file: $EXE_FILE\033[0m;"
@@ -159,7 +135,7 @@ cat <<EOF > "$AUTO_RUN_PLIST"
        	<key>RunAtLoad</key>
         <true/>
         <key>StartInterval</key>
-        <integer>3600</integer>
+        <integer>7200</integer>
 	</dict>
 </plist>
 EOF
