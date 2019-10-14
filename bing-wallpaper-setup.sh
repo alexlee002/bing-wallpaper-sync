@@ -71,7 +71,6 @@ echo "AUTO_RUN_PLIST: $AUTO_RUN_PLIST"
 cat <<EOF > "$EXE_FILE"
 #!/usr/bin/env bash
 
-
 download_image() {
 	url=\$1
 	out_file=\$2
@@ -83,8 +82,11 @@ download_image() {
         curl -Lo "\$out_file" "\$url"
         [ -s  "\$out_file" ] || rm -f "\$out_file"
 
-        is_img_file=\$(file "\$out_file" | grep -e " image data" | wc -l)
-        [ \$is_img_file -gt 0 ] || rm -f "\$out_file"
+        if [ -f "\$out_file" ]; then 
+            is_img_file=\$(file "\$out_file" | grep -e " image data" | wc -l)
+            echo \$is_img_file
+            [ \$is_img_file -gt 0 ] || rm -f "\$out_file"
+        fi
     fi
 }
 
@@ -94,60 +96,70 @@ WALLPAPER_DIR="\$HOME/Pictures/bing-wallpapers"
 data=\$(curl -sL "\$WALLPAPER_SERVER")
 pic_url=\$(echo "\$data" | grep -Eo "\"url\":\s*['\"].*?['\"]" | sed -e "s/\"url\"[\: ]\+//"| sed -e "s/['\"]//g")
 pic_url=\$(echo "\$pic_url" | sed -e "s/url:\(.*\)/\1/")
-pic_url="https://www.bing.com\$pic_url"
+[ "\$pic_url" != "" ] || ( echo "invalid pic url" && exit )
+full_pic_url="https://www.bing.com\$pic_url"
 
-url_base=\$(echo "\$data" | grep -Eo "\"urlbase\":\s*['\"].*?['\"]" | sed -e "s/\"urlbase\"[\: ]\+//"| sed -e "s/['\"]//g")
-url_base=\$(echo "\$url_base" | sed -e "s/urlbase:\(.*\)/\1/")
-pic_name=\$(echo "\$url_base" | sed -e "s/.*id=\(.*\)/\1/")
-out_file="\$WALLPAPER_DIR"/"\$pic_name"
+file_name=\$(echo "\$pic_url" | grep -Eo ".*\bid=.*\&")
+file_name=\$(echo "\$file_name" | sed -e "s/.*id=\(.*\)\&/\1/")
+file_name=\$(echo "\$file_name" | awk -F '&' '{print \$1}')
+if [[ "\$file_name" == "" ]]; then
+    file_name=\$(IFS='/' read -r -a array <<< "\$pic_url"; echo "\${array[@]: -1:1}")
+fi
+[ "\$file_name" != "" ] || file_name=\$(date "+%Y-%m-%d.jpg")
+out_file="\$WALLPAPER_DIR"/"\$file_name"
+
+echo \$out_file
+echo \$full_pic_url
+
 
 if [[ ! -f "\$out_file" ]]; then
-	download_image "\$pic_url" "\$out_file"
-fi  
+	download_image "\$full_pic_url" "\$out_file"
+fi
+ 
 EOF
 
 [ -f $EXE_FILE ] || exit "\033[31m;Can not create executable file: $EXE_FILE\033[0m;"
 
 chmod u+x "$EXE_FILE"
 
-# Output auto execute plist file
-LaunchAgentsPath=$(dirname $AUTO_RUN_PLIST)
-mkdir -p $LaunchAgentsPath
+# # Output auto execute plist file
+# LaunchAgentsPath=$(dirname $AUTO_RUN_PLIST)
+# mkdir -p $LaunchAgentsPath
 
-cat <<EOF > "$AUTO_RUN_PLIST"
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-	<dict>
-		<key>Label</key>
-		<string>bing-wallpaper-auto-update</string>
-		<key>ProgramArguments</key>
-		<array>
-			<string>/bin/bash</string>
-			<string>$EXE_FILE</string>
-		</array>
-		<key>LowPriorityIO</key>
-		<true/>
-		<key>Nice</key>
-		<integer>1</integer>
-		<key>KeepAlive</key>
-        <false/>
-       	<key>RunAtLoad</key>
-        <true/>
-        <key>StartInterval</key>
-        <integer>7200</integer>
-	</dict>
-</plist>
-EOF
+# cat <<EOF > "$AUTO_RUN_PLIST"
+# <?xml version="1.0" encoding="UTF-8"?>
+# <!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+# <plist version="1.0">
+# 	<dict>
+# 		<key>Label</key>
+# 		<string>bing-wallpaper-auto-update</string>
+# 		<key>ProgramArguments</key>
+# 		<array>
+# 			<string>/bin/bash</string>
+# 			<string>$EXE_FILE</string>
+# 		</array>
+# 		<key>LowPriorityIO</key>
+# 		<true/>
+# 		<key>Nice</key>
+# 		<integer>1</integer>
+# 		<key>KeepAlive</key>
+#         <false/>
+#        	<key>RunAtLoad</key>
+#         <true/>
+#         <key>StartInterval</key>
+#         <integer>7200</integer>
+# 	</dict>
+# </plist>
+# EOF
 
-if [ ! -f $AUTO_RUN_PLIST ]; then
-	echo "\033[31mCan not create auto update config file: $AUTO_RUN_PLIST\033[0m"
-	exit 1
-fi
+# if [ ! -f $AUTO_RUN_PLIST ]; then
+# 	echo "\033[31mCan not create auto update config file: $AUTO_RUN_PLIST\033[0m"
+# 	exit 1
+# fi
 
-launchctl unload $AUTO_RUN_PLIST
-launchctl load $AUTO_RUN_PLIST
-launchctl start $AUTO_RUN_PLIST
+# launchctl unload $AUTO_RUN_PLIST
+# launchctl load $AUTO_RUN_PLIST
+# launchctl start $AUTO_RUN_PLIST
 
 echo "\033[1;32mDone!\033[0m"
 
